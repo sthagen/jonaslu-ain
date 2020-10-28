@@ -6,7 +6,7 @@ UUIDS=`
 `
 
 [Host]
-http://localhost:8080/
+   http://localhost:8080/
 http://scores.api-elb-${ENV}.internal.h11n.se/
 
 [URL]
@@ -25,3 +25,5 @@ GET
 curl
 -sS
 --no-buffer
+
+[Host]

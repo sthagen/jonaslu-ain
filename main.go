@@ -9,6 +9,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/jonaslu/ain/sections"
+
+	"github.com/jonaslu/ain/data"
+
 	"github.com/pkg/errors"
 )
 
@@ -68,18 +72,19 @@ func copySourceTemplate(sourceTemplateFileName string) *os.File {
 	return tempFile
 }
 
-func stripComments(editedTemplate string) string {
-	strippedLines := []string{}
+func tokenizeTemplate(editedTemplate string) data.Template {
+	strippedLines := data.Template{}
 
 	allLines := strings.Split(editedTemplate, "\n")
-	for _, line := range allLines {
-		isCommentLine, _ := regexp.MatchString("^\\s*#", line)
-		if !isCommentLine {
-			strippedLines = append(strippedLines, line)
+	for sourceIndex, line := range allLines {
+		isCommentOrWhitespaceLine, _ := regexp.MatchString("^\\s*#|^\\s*$", line)
+		if !isCommentOrWhitespaceLine {
+			sourceMarker := data.SourceMarker{LineContents: strings.TrimSpace(line), SourceLineIndex: sourceIndex + 1}
+			strippedLines = append(strippedLines, sourceMarker)
 		}
 	}
 
-	return strings.Join(strippedLines, "\n")
+	return strippedLines
 }
 
 func main() {
@@ -105,6 +110,13 @@ func main() {
 	defer tempFile.Close()
 
 	editedTemplate := captureEditorOutput(tempFile)
+	tokeniedTemplate := tokenizeTemplate(editedTemplate)
 
-	fmt.Println("Tempfile contents", stripComments(editedTemplate))
+	templateSections := &data.TemplateSections{}
+
+	warnings, error := sections.ParseHostSection(tokeniedTemplate, templateSections)
+
+	fmt.Println("warnings", warnings)
+	fmt.Println("error", error)
+	fmt.Println("sections", templateSections)
 }
