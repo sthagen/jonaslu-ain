@@ -56,7 +56,6 @@ func ParseHostSection(template data.Template, templateSections *data.TemplateSec
 		return warnings, errors.New("No mandatory [Host] section found")
 	}
 
-	// Set the URL
 	if len(hostLines) > 1 {
 
 		for _, hostLine := range hostLines {
@@ -69,7 +68,7 @@ func ParseHostSection(template data.Template, templateSections *data.TemplateSec
 		}
 	}
 
-	// !! TODO !! Parse URL as valid too
+	// !! TODO !! Parse URL as valid too - cannot do that here, must substitute shit first
 	templateSections.Host = hostLines[len(hostLines)-1].LineContents
 
 	return warnings, nil
