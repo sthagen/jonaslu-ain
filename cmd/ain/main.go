@@ -16,7 +16,7 @@ import (
 	"github.com/jonaslu/ain/internal/pkg/disk"
 )
 
-var version = "1.1.0"
+var version = "1.2.0"
 var gitSha = "develop"
 
 func printInternalErrorAndExit(err error) {
@@ -38,6 +38,18 @@ func checkSignalRaisedAndExit(ctx context.Context, signalRaised os.Signal) {
 func main() {
 	var leaveTmpFile, printCommand, showVersion, generateEmptyTemplate bool
 	var envFile string
+
+	flag.Usage = func() {
+		w := flag.CommandLine.Output()
+
+		introMsg := `Ain is an HTTP API client. It reads template files to make the HTTP call.
+These can be given on the command line or sent over a pipe.
+
+Project home page: https://github.com/jonaslu/ain`
+
+		fmt.Fprintf(w, "%s\n\nusage: %s [options]... <template.ain>...\n", introMsg, os.Args[0])
+		flag.PrintDefaults()
+	}
 
 	flag.BoolVar(&leaveTmpFile, "l", false, "Leave any temp-files")
 	flag.BoolVar(&printCommand, "p", false, "Print command to the terminal instead of executing")
@@ -69,7 +81,7 @@ func main() {
 	}
 
 	if len(localTemplateFileNames) == 0 {
-		printInternalErrorAndExit(errors.New("Missing template name\nUsage ain <template.ain> or connect it to a pipe"))
+		printInternalErrorAndExit(errors.New("Missing template file name(s)\n\nTry 'ain -h' for more information"))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

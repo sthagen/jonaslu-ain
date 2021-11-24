@@ -14,6 +14,8 @@ import (
 func mergeCallData(dest, merge *data.Parse) {
 	dest.Host = append(dest.Host, merge.Host...)
 
+	dest.Query = append(dest.Query, merge.Query...)
+
 	if len(merge.Body) != 0 {
 		dest.Body = merge.Body
 	}
@@ -33,6 +35,10 @@ func mergeCallData(dest, merge *data.Parse) {
 	if merge.Config.Timeout != data.TimeoutNotSet {
 		dest.Config.Timeout = merge.Config.Timeout
 	}
+
+	if merge.Config.QueryDelim != nil {
+		dest.Config.QueryDelim = merge.Config.QueryDelim
+	}
 }
 
 func getCallData(parse *data.Parse) (*data.Call, []string) {
@@ -47,9 +53,10 @@ func getCallData(parse *data.Parse) (*data.Call, []string) {
 
 		if err != nil {
 			fatals = append(fatals, fmt.Sprintf("[Host] has illegal url: %s, error: %v", hostStr, err))
+		} else {
+			addQueryString(host, parse)
+			callData.Host = host
 		}
-
-		callData.Host = host
 	}
 
 	if parse.Backend == "" {
