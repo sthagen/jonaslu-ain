@@ -182,6 +182,8 @@ $> find . -name *.ain | fzf -m | ain
 
 Template file names specified on the command line are read before any names from a pipe. This means that `echo create-blog-post.ain | ain base.ain` is the same as `ain base.ain create-blog-post.ain`.
 
+Ain function the same bash when it comes to file names: if they contain white-space the name should be quoted.
+
 # Supported sections
 Sections are case-insensitive and whitespace ignored but by convention uses CamelCase and are left indented. A section cannot be defined twice in a file. A section ends where the next begins or the file ends.
 
@@ -420,8 +422,10 @@ With ain being terminal friendly there are few neat tricks in the [wiki](https:/
 # Contributing
 I'd love if you want to get your hands dirty and improve ain!
 
-If you look closely there are no tests. There's even a [commit](9e114a3) wiping all tests that once was. Why is a good question. WTF is also a valid response.
+If you look closely there are almost* no tests. There's even a [commit](9e114a3) wiping all tests that once was. Why is a good question. WTF is also a valid response.
 
 It's an experiment you see, I've blogged about [atomic literate commits](https://www.iamjonas.me/2021/01/literate-atomic-commits.html) paired with a thing called a [test plan](https://www.iamjonas.me/2021/04/the-test-plan.html). This means you make the commit solve one problem, write in plain english what problem and how the commit solves it and how you verified that it works. All of that in the commit messages. For TL;DR; do a `git log` and see for yourself.
 
 I'll ask you to do the same and we'll experiment together. See it as a opportunity to try on something new.
+
+\* Except for where it does make sense to have a unit-test: to exercise a well known algo  and prove it's correct as done in utils_test.go. Doing this by hand would be hard, timeconsuming and error prone.
