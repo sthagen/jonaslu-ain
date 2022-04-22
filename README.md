@@ -15,8 +15,45 @@ Ain is a terminal HTTP API client. It's an alternative to postman, paw or insomn
 
 Ain was built to enable scripting of input and further processing of output via pipes. It targets users who work with many API:s using a simple file format. It uses [curl](https://curl.se/), [wget](https://www.gnu.org/software/wget/) or [httpie](https://httpie.io/) to make the actual calls.
 
+# Table of contents
+<!-- npx doctoc --github --notitle --maxlevel=2 -->
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+
+- [Pre-requisites](#pre-requisites)
+- [Installation](#installation)
+  - [If you have go installed](#if-you-have-go-installed)
+  - [Via homebrew](#via-homebrew)
+  - [Via scoop](#via-scoop)
+  - [Via the AUR (Arch Linux)](#via-the-aur-arch-linux)
+  - [Download binaries yourself](#download-binaries-yourself)
+- [Quick start](#quick-start)
+- [Longer start](#longer-start)
+- [Important concepts](#important-concepts)
+- [Templates](#templates)
+- [Running ain](#running-ain)
+- [Supported sections](#supported-sections)
+  - [[Host]](#host)
+  - [[Query]](#query)
+  - [[Headers]](#headers)
+  - [[Method]](#method)
+  - [[Body]](#body)
+  - [[Config]](#config)
+  - [[Backend]](#backend)
+  - [[BackendOptions]](#backendoptions)
+- [Environment variables](#environment-variables)
+- [Executables](#executables)
+- [Fatals](#fatals)
+- [URL-encoding](#url-encoding)
+- [Sharing is caring](#sharing-is-caring)
+- [Troubleshooting](#troubleshooting)
+- [Ain in a bigger context](#ain-in-a-bigger-context)
+- [Contributing](#contributing)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # Pre-requisites
-You need [curl](https://curl.se/), [wget](https://www.gnu.org/software/wget/) or [httpie](https://httpie.io/) installed and available on your `$PATH`. The easiest way to test this is to run `ain -b`. This will generate a template and tell you what backends you have available on your system in the [Backend] section.
+You need [curl](https://curl.se/), [wget](https://www.gnu.org/software/wget/) or [httpie](https://httpie.io/) installed and available on your `$PATH`. The easiest way to test this is to run `ain -b`. This will generate a basic starter template listing what backends you have available on your system in the [[Backend]](#backend) section. It will select one and leave the others commented out.
 
 You can also check manually what backends you have installed by opening up a shell and type `curl`, `wget` or `http` (add the suffix .exe to those commands if you're on windows). If there's any output from the command itself you're good to go.
 
@@ -46,12 +83,18 @@ scoop bucket add jonaslu_tools https://github.com/jonaslu/scoop-tools.git
 scoop install ain
 ```
 
+## Via the AUR (Arch Linux)
+From arch linux [AUR](https://aur.archlinux.org/) using [yay](https://github.com/Jguer/yay)
+```
+yay -S ain-bin
+```
+
 ## Download binaries yourself
 Install it so it's available on your `$PATH`:
 [https://github.com/jonaslu/ain/releases](https://github.com/jonaslu/ain/releases)
 
 # Quick start
-Ain comes with a built in basic template that you can use as a starting point. Ain also checks what backends (that's [curl](https://curl.se/), [wget](https://www.gnu.org/software/wget/) or [httpie](https://httpie.io/)) are available on your system and inserts them into the [Backend] section of the generated template.
+Ain comes with a built in basic template that you can use as a starting point. Ain also checks what backends (that's [curl](https://curl.se/), [wget](https://www.gnu.org/software/wget/) or [httpie](https://httpie.io/)) are available on your system and inserts them into the [[Backend]](#backend) section of the generated template. One will be selected and the rest commented out so the template is runnable directly.
 
 Run:
 ```
@@ -68,9 +111,9 @@ PORT=8080 ain basic_template.ain
 ```
 
 # Longer start
-Ain uses sections in square brackets to specify what API to call.
+Ain uses sections in square brackets to specify how to call an API.
 
-Start by putting things common to a service in a file (let's call it base.ain):
+Start by putting things common to all APIs for a service in a file (let's call it base.ain):
 
 ```
 $> cat base.ain
@@ -164,16 +207,20 @@ Anything after a pound sign (#) is a comment and will be ignored.
 # Running ain
 `ain [options] <template-files...>[!]`
 
-Ain accepts one or more template-files as a mandatory parameter. As sections combine or overwrite where it makes sense you can better organize API-calls into hierarchical structures with increasing specificity. An example would be setting the [[Headers]](#Headers), [[Backend]](#backend) and [[BackendOptions]](#BackendOptions) in a base template file and then specifying the specific [[Host]](#Host), [[Method]](#Method) and [[Body]](#Body) in several template files, one for each API-endpoint. You can even use an `alias` for things you will always set.
+Ain accepts one or more template-file(s) as a mandatory parameter. As sections combine or overwrite where it makes sense you can better organize API-calls into hierarchical structures with increasing specificity. An example would be setting the [[Headers]](#Headers), [[Backend]](#backend) and [[BackendOptions]](#BackendOptions) in a base template file and then specifying the specific [[Host]](#Host), [[Method]](#Method) and [[Body]](#Body) in several template files, one for each API-endpoint. You can even use an `alias` for things you will always set.
 
-Adding an exclamation-mark (!) at the end of the template file name makes ain open the file in your `$EDITOR` (or vim if not set) so you can edit the template file. Any changes are not stored back into the template file and used only this invocation.
+Adding an exclamation-mark (!) at the end of the template file name makes ain open the file in your `$VISUAL` or `$EDITOR` editor or falls back to vim in that order so you can edit the template file. Any changes are not stored back into the template file and used only this invocation.
 
 Example:
 ```
 ain templates/get-blog-post.ain!
 ```
 
-Note that the `$EDITOR` cannot fork (as vscode does) because ain waits for the `$EDITOR` command to finish. Any terminal editor such as vim, emacs, nano etc will be fine.
+Ain waits for the editor command to exit. Any terminal editor such as vim, emacs, nano etc will be fine. If your editor of choice forks (such as [vscode](https://code.visualstudio.com/) does by default) check if there's a flag stopping it from forking. For example to stop vscode from forking use the `--wait` [flag](https://code.visualstudio.com/docs/editor/command-line#_core-cli-options):
+
+```
+export EDITOR="code --wait"
+```
 
 If ain is connected to a pipe it will try to read template file names off that pipe. This enables you to use [find](https://man7.org/linux/man-pages/man1/find.1.html) and a selector such as [fzf](https://github.com/junegunn/fzf) to keep track of the template-files:
 ```
@@ -182,12 +229,12 @@ $> find . -name *.ain | fzf -m | ain
 
 Template file names specified on the command line are read before any names from a pipe. This means that `echo create-blog-post.ain | ain base.ain` is the same as `ain base.ain create-blog-post.ain`.
 
-Ain function the same bash when it comes to file names: if they contain white-space the name should be quoted.
+Ain functions as bash when it comes to file names: if they contain white-space the name should be quoted.
 
 # Supported sections
 Sections are case-insensitive and whitespace ignored but by convention uses CamelCase and are left indented. A section cannot be defined twice in a file. A section ends where the next begins or the file ends.
 
-In the unlikely event that the contents of a section must contain the exact same text as a valid section (one of the seven below) on one line you can escape that text with a `\` and it will be passed as text.
+In the unlikely event that the contents of a section must contain the exact same text as a valid section (one of the eight below) on one line you can escape that text with a `\` and it will be passed as text.
 
 E g:
 ```
@@ -200,7 +247,7 @@ Including the text above.
 ## [Host]
 Contains the URL to the API. This section appends the lines from one template file to the next. This neat little feature allows you to specify a base-url in one file (e g `base.ain`) as such: `http://localhost:3000` and in the next template file specify the endpoint (e g `login.ain`): `/api/auth/login`.
 
-It's recommended that you use the [[Query]](#Query) section below for query-parameters as it handles joining with delimiters and trimming whitespace, but you can put raw query-paramters in the [Host] section too of course. Any query-parameters added in the [[Query]](#Query) section are appended last to the URL. The whole URL is properly [url-encoding](#url-encoding) before passed to the backend.
+It's recommended that you use the [[Query]](#Query) section below for query-parameters as it handles joining with delimiters and trimming whitespace, but you can put raw query-paramters in the [Host] section too of course. Any query-parameters added in the [[Query]](#Query) section are appended last to the URL. The whole URL is properly [url-encoded](#url-encoding) before passed to the backend.
 
 Ain performs no validation on the url (as backends differ on what a valid url looks like). If your call does not go through use `ain -p` as mentioned in [troubleshooting](#troubleshooting) and input that directly into the backend to see what it thinks it means.
 
@@ -255,7 +302,7 @@ Authorization: Bearer 888e90f2-319f-40a0-b422-d78bb95f229e
 Content-Type: application/json
 ```
 
-The [Headers] section appends across template files so you can share common headers.
+The [Headers] section appends across template files.
 
 ## [Method]
 What http-method to use in the API call (e g GET, POST, PATCH). If omitted the backend default is used (GET in both curl, wget and httpie).
@@ -269,7 +316,7 @@ POST
 The [Method] section is overridden by latter template files.
 
 ## [Body]
-If the API call needs a body (as in the POST or PATCH http methods) the content of this section is passed as a file to the backend. Ain uses files because formatting may be important (e g yaml). In the template file this section can be pretty-printed for easier eye-balling (e g json).
+If the API call needs a body (as in the POST or PATCH http methods) the content of this section is passed as a file to the backend with the formatting retained from the [Body] section. Ain uses files instead of passing the [Body] as a command-line parameter because white-space may be important (e g yaml) and this section tends to be long.
 
 The file passed to the backend is removed after the API call unless you pass the `-l` flag. Ain places the file in the $TMPFILE directory (usually `/tmp` on your box). You can override this in your shell by explicitly setting `$TMPFILE` if you'd like them elsewhere.
 
@@ -281,31 +328,31 @@ Example:
 }
 ```
 
-The [Body] sections is overridden by latter template files.
+The [Body] section is overridden by latter template files.
 
 ## [Config]
-This section contains config for ain. Any backend-specific config is passed via the [[BackendOptions]](#BackendOptions) section.
+This section contains config for ain. All config parameters are case-insensitive and any whitespace is ignored. Parameters for backends themselves are passed via the [[BackendOptions]](#BackendOptions) section.
 
 Full config example:
 ```
 [Config]
 Timeout=3
-queryDelim=;
+QueryDelim=;
 ```
+
+The [Config] sections is overridden by latter template files.
 
 ### Timeout
 Config format: `Timeout=<timeout in seconds>`
 
-The timeout is enforced during the whole execution of ain (both running executables and the actual API call). If omitted defaults to no timeout. Note that this is the only section where executables have no effect, since the timeout needs to be known before the executables are invoked.
+The timeout is enforced during the whole execution of ain (both running executables and the actual API call). If omitted defaults to no timeout. This is the only section where [executables](#executables) cannot be used, since the timeout needs to be known before the executables are invoked.
 
 ### Query delimiter
-Config format: `queryDelim=<text>`
+Config format: `QueryDelim=<text>`
 
-This is the delimiter used when concatenating the lines under the [[Query]](#Query) section to form the query-string of an URL. It any text that does not contain a space including the empty string.
+This is the delimiter used when concatenating the lines under the [[Query]](#Query) section to form the query-string of an URL. It can be any text that does not contain a space including the empty string.
 
 It defaults to the most used query-delimiter (`&`).
-
-The [Config] sections is overridden by latter template files.
 
 ## [Backend]
 The [Backend] specifies what command should be used to run the actual API call.
@@ -337,7 +384,7 @@ The [BackendOptions] section appends across template files.
 # Environment variables
 Anything inside `${}` in a template is replaced with the value found in the environment.
 
-Ain also reads any .env files in the folder from where it's run. You can pass a custom .env file via the `-e` flag.
+Ain also reads any .env files in the folder from where it's run. You can pass a custom .env file via the `-e` flag. Only new variables are set. Any already existing env-variable is not modified.
 
 This enables you to specify things that vary across API calls either permanently in the .env file or one-shot via the command-line. Example:
 `PORT=5000 ain base.ain create-blog-post.ain`
@@ -359,7 +406,7 @@ Authorization: Bearer $(bash -c "./get-login.sh | jq -r '.token'")
 
 Ain expects the first word in an executable to be on your $PATH and the rest to be arguments (hence the need for quotes to bash -c as this is passed as one argument).
 
-Executables are captured and replaced in the template after any environment-variables so if the script returns an environment-variable name it won't be expanded into any value.
+Executables are captured and replaced in the template after any environment-variables are expanded. This means that anything the executable returns is inserted directly even if it's a valid environment variable name.
 
 # Fatals
 Ain has two types of errors: fatals and errors. Errors are things internal to ain (it's not your fault) such as not finding the backend-binary.
@@ -407,12 +454,12 @@ ain -p base.ain create-blog-post.ain | bash
 ```
 
 A note on line-endings. Ain uses line-feed (\n) when printing it's output. If you're on windows and storing ain:s result to a file, this
-may cause trouble. Instead of trying to guess what line ending we're on (WSL, docker, cygwin etc makes this a wild goose chase), you'll have to manually convert them if the receiving progrogram complains.
+may cause trouble. Instead of trying to guess what line ending we're on (WSL, docker, cygwin etc makes this a wild goose chase), you'll have to manually convert them if the receiving program complains.
 
 Instructions here: https://stackoverflow.com/a/19914445/1574968
 
 # Troubleshooting
-If the templates are valid but the backend-call fails, `ain -p` can show you what the command ain runs looks like.
+If the templates are valid but the actual call still fails, adding the `-p` flag will show you what the command ain tries to run looks like. Running this yourself in a terminal might give you more clues to what's wrong.
 
 # Ain in a bigger context
 But wait! There's more!
@@ -424,7 +471,7 @@ I'd love if you want to get your hands dirty and improve ain!
 
 If you look closely there are almost* no tests. There's even a [commit](9e114a3) wiping all tests that once was. Why is a good question. WTF is also a valid response.
 
-It's an experiment you see, I've blogged about [atomic literate commits](https://www.iamjonas.me/2021/01/literate-atomic-commits.html) paired with a thing called a [test plan](https://www.iamjonas.me/2021/04/the-test-plan.html). This means you make the commit solve one problem, write in plain english what problem and how the commit solves it and how you verified that it works. All of that in the commit messages. For TL;DR; do a `git log` and see for yourself.
+It's an experiment you see, I've blogged about [atomic literate commits](https://www.iamjonas.me/2021/01/literate-atomic-commits.html) paired with a thing called a [test plan](https://www.iamjonas.me/2021/04/the-test-plan.html). This means you make the commit solve one problem, write in plain english what problem is and how the commit solves it and how you verified that it works. All of that in the commit messages. For TL;DR; do a `git log` and see for yourself.
 
 I'll ask you to do the same and we'll experiment together. See it as a opportunity to try on something new.
 

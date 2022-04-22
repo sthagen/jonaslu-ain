@@ -11,15 +11,36 @@ import (
 	"github.com/pkg/errors"
 )
 
-const EDIT_FILE_SUFFIX = "!"
+const editFileSuffix = "!"
+const fallbackEditor = "vim"
 
 func captureEditorOutput(tempFile *os.File) (string, error) {
-	editorCmd := os.Getenv("EDITOR")
-	if editorCmd == "" {
-		editorCmd = "vim"
+	editorEnvVarName := "VISUAL"
+	editorEnvStr := os.Getenv(editorEnvVarName)
+
+	if editorEnvStr == "" {
+		editorEnvVarName = "EDITOR"
+		editorEnvStr = os.Getenv(editorEnvVarName)
 	}
 
-	cmd := exec.Command(editorCmd, tempFile.Name())
+	if editorEnvStr == "" {
+		_, err := exec.LookPath(fallbackEditor)
+		if err != nil {
+			return "", errors.New("Cannot find the fallback editor vim on the $PATH. Cannot edit file.")
+		}
+
+		editorEnvVarName = fallbackEditor
+		editorEnvStr = fallbackEditor
+	}
+
+	editorCmdAndArgs, err := utils.TokenizeLine(editorEnvStr)
+	if err != nil {
+		return "", errors.Wrapf(err, "Cannot parse $%s environment variable", editorEnvVarName)
+	}
+
+	editorArgs := append(editorCmdAndArgs[1:], tempFile.Name())
+
+	cmd := exec.Command(editorCmdAndArgs[0], editorArgs...)
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
 		return "", errors.Wrap(err, "Can't open /dev/tty")
@@ -31,7 +52,7 @@ func captureEditorOutput(tempFile *os.File) (string, error) {
 
 	err = cmd.Run()
 	if err != nil {
-		return "", errors.Wrapf(err, "Error running $EDITOR %s", cmd.String())
+		return "", errors.Wrapf(err, "Error running $%s %s", editorEnvVarName, cmd.String())
 	}
 
 	_, err = tempFile.Seek(0, 0)
@@ -80,8 +101,8 @@ func readEditedTemplate(sourceTemplateFileName string) (str string, err error) {
 }
 
 func ReadTemplate(templateFileName string) (string, error) {
-	if strings.HasSuffix(templateFileName, EDIT_FILE_SUFFIX) {
-		return readEditedTemplate(strings.TrimSuffix(templateFileName, EDIT_FILE_SUFFIX))
+	if strings.HasSuffix(templateFileName, editFileSuffix) {
+		return readEditedTemplate(strings.TrimSuffix(templateFileName, editFileSuffix))
 	}
 
 	fileContents, err := ioutil.ReadFile(templateFileName)

@@ -19,6 +19,8 @@ import (
 var version = "1.2.2"
 var gitSha = "develop"
 
+const bashSignalCaughtBase = 128
+
 func printInternalErrorAndExit(err error) {
 	formattedError := fmt.Errorf("Error: %v", err.Error())
 	fmt.Fprintln(os.Stderr, formattedError.Error())
@@ -28,7 +30,7 @@ func printInternalErrorAndExit(err error) {
 func checkSignalRaisedAndExit(ctx context.Context, signalRaised os.Signal) {
 	if ctx.Err() == context.Canceled {
 		if sigValue, ok := signalRaised.(syscall.Signal); ok {
-			os.Exit(128 + int(sigValue))
+			os.Exit(bashSignalCaughtBase + int(sigValue))
 		}
 
 		os.Exit(1)
