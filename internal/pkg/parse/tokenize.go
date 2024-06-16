@@ -59,9 +59,12 @@ func Tokenize(input string, allowedToken tokenType) ([]token, string) {
 	inputRunes := []rune(input)
 
 	currentContent := ""
+
 	var currentTokenType tokenType = textToken
+
 	var executableQuoteRune rune
 	var executableQuoteEnd int
+	executableStartIdx := 0
 
 	idx := 0
 	for idx < len(inputRunes) {
@@ -78,6 +81,7 @@ func Tokenize(input string, allowedToken tokenType) ([]token, string) {
 
 			// Executable
 			if allowedToken >= executableToken && isStartOfToken(executablePrefix, prev, rest) {
+				executableStartIdx = idx
 				idx += len(executablePrefix)
 
 				currentTokenType = executableToken
@@ -104,7 +108,7 @@ func Tokenize(input string, allowedToken tokenType) ([]token, string) {
 				if currentTokenType == commentToken {
 					result = append(result, token{
 						tokenType:    commentToken,
-						fatalContent: commentPrefix + string(inputRunes[idx:]),
+						fatalContent: rest,
 					})
 
 					return result, ""
@@ -162,7 +166,7 @@ func Tokenize(input string, allowedToken tokenType) ([]token, string) {
 				result = append(result, token{
 					tokenType:    executableToken,
 					content:      currentContent,
-					fatalContent: executablePrefix + currentContent + ")",
+					fatalContent: string(inputRunes[executableStartIdx : idx+1]),
 				})
 
 				currentTokenType = textToken
@@ -193,10 +197,10 @@ func Tokenize(input string, allowedToken tokenType) ([]token, string) {
 		})
 
 		if executableQuoteRune != 0 {
-			return result, fmt.Sprintf("Unterminated quote sequence for executable: %s%s", executablePrefix, currentContent)
+			return result, fmt.Sprintf("Unterminated quote sequence for executable: %s", string(inputRunes[executableStartIdx:idx+1]))
 		}
 
-		return result, fmt.Sprintf("Missing closing parenthesis for executable: %s%s", executablePrefix, currentContent)
+		return result, fmt.Sprintf("Missing closing parenthesis for executable: %s", string(inputRunes[executableStartIdx:idx+1]))
 	}
 
 	if len(currentContent) > 0 && currentTokenType == textToken {
