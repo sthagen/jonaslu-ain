@@ -26,11 +26,19 @@ func (s *sectionedTemplate) captureExecutableAndArgs() []executableAndArgs {
 	executables := []executableAndArgs{}
 
 	for expandedTemplateLineIndex, expandedTemplateLine := range s.expandedTemplateLines {
-		for _, token := range expandedTemplateLine.tokens {
-			if token.tokenType == commentToken {
-				break
-			}
+		executableTokens, fatal := tokenizeExecutables(expandedTemplateLine.content)
+		if fatal != "" {
+			s.setFatalMessage(fatal, expandedTemplateLine.sourceLineIndex)
+		}
 
+		if s.hasFatalMessages() {
+			// No need to keep expanding - we're going to exit after this
+			// returns. Try to tokenize all lines to get any extra errors,
+			// but don't do any extra work
+			continue
+		}
+
+		for _, token := range executableTokens {
 			if token.tokenType != executableToken {
 				continue
 			}
@@ -123,7 +131,7 @@ func (s *sectionedTemplate) insertExecutableOutput(executableResults *[]executab
 
 	nextExecutableResult := (*executableResults)[0]
 
-	s.iterate(executableToken, func(c token) (string, string) {
+	s.expandTemplateLines(tokenizeExecutables, func(c token) (string, string) {
 		fatalMessage := nextExecutableResult.fatalMessage
 		output := nextExecutableResult.cmdOutput
 
@@ -136,6 +144,5 @@ func (s *sectionedTemplate) insertExecutableOutput(executableResults *[]executab
 		}
 
 		return output, fatalMessage
-
 	})
 }

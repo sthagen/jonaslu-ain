@@ -43,7 +43,7 @@ func formatMissingEnvVarErrorMessage(missingEnvVar string) string {
 }
 
 func (s *sectionedTemplate) substituteEnvVars() {
-	s.iterate(envVarToken, func(c token) (string, string) {
+	s.expandTemplateLines(tokenizeEnvVars, func(c token) (string, string) {
 		envVarKey := c.content
 		if envVarKey == "" {
 			return "", "Empty variable"

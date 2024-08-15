@@ -30,17 +30,33 @@ const (
 	executablePrefix = "$("
 )
 
-func unescapeTextContent(content string, allowedToken tokenType, hasNextToken bool) string {
-	// Unescape `#, `${ and `$(
-	if allowedToken >= envVarToken {
-		content = strings.ReplaceAll(content, "`"+envVarPrefix, envVarPrefix)
+func isStartOfToken(tokenTypePrefix, prev, rest string) bool {
+	return strings.HasPrefix(rest, tokenTypePrefix) && (!strings.HasSuffix(prev, "`") || strings.HasSuffix(prev, "\\`"))
+}
+
+func splitTextOnComment(input string) (string, string) {
+	inputRunes := []rune(input)
+
+	currentContent := ""
+	idx := 0
+
+	for idx < len(inputRunes) {
+		rest := string(inputRunes[idx:])
+		prev := string(inputRunes[:idx])
+
+		if isStartOfToken(commentPrefix, prev, rest) {
+			return currentContent, rest
+		}
+
+		currentContent += string(inputRunes[idx])
+		idx++
 	}
 
-	if allowedToken >= executableToken {
-		content = strings.ReplaceAll(content, "`"+executablePrefix, executablePrefix)
-	}
+	return currentContent, ""
+}
 
-	content = strings.ReplaceAll(content, "`"+commentPrefix, commentPrefix)
+func unescapeEnvVars(content string, hasNextToken bool) string {
+	content = strings.ReplaceAll(content, "`"+envVarPrefix, envVarPrefix)
 
 	// Handle escaped backtick at the end
 	if hasNextToken && strings.HasSuffix(content, "\\`") {
@@ -50,76 +66,37 @@ func unescapeTextContent(content string, allowedToken tokenType, hasNextToken bo
 	return content
 }
 
-func isStartOfToken(tokenTypePrefix, prev, rest string) bool {
-	return strings.HasPrefix(rest, tokenTypePrefix) && (!strings.HasSuffix(prev, "`") || strings.HasSuffix(prev, "\\`"))
-}
-
-func Tokenize(input string, allowedToken tokenType) ([]token, string) {
+// tokenizeEnvVars does not handle comments, input
+// is the content of an expandedSectionLine
+func tokenizeEnvVars(input string) ([]token, string) {
 	result := []token{}
 	inputRunes := []rune(input)
 
 	currentContent := ""
-
-	var currentTokenType tokenType = textToken
-
-	var executableQuoteRune rune
-	var executableQuoteEnd int
-	executableStartIdx := 0
-
+	isEnvVar := false
 	idx := 0
+
 	for idx < len(inputRunes) {
 		rest := string(inputRunes[idx:])
 		prev := string(inputRunes[:idx])
 
-		if currentTokenType == textToken {
-			// EnvVar
-			if allowedToken >= envVarToken && isStartOfToken(envVarPrefix, prev, rest) {
-				idx += len(envVarPrefix)
-
-				currentTokenType = envVarToken
-			}
-
-			// Executable
-			if allowedToken >= executableToken && isStartOfToken(executablePrefix, prev, rest) {
-				executableStartIdx = idx
-				idx += len(executablePrefix)
-
-				currentTokenType = executableToken
-			}
-
-			// Comment
-			if isStartOfToken(commentPrefix, prev, rest) {
-				idx += len(commentPrefix)
-
-				currentTokenType = commentToken
-			}
-
-			if currentTokenType != textToken {
-				if len(currentContent) > 0 {
-					// Pack up collected text
-					result = append(result, token{
-						tokenType:    textToken,
-						content:      unescapeTextContent(currentContent, allowedToken, true),
-						fatalContent: currentContent,
-					})
-				}
-
-				// Comment applies to the rest of the line
-				if currentTokenType == commentToken {
-					result = append(result, token{
-						tokenType:    commentToken,
-						fatalContent: rest,
-					})
-
-					return result, ""
-				}
+		if !isEnvVar && isStartOfToken(envVarPrefix, prev, rest) {
+			if len(currentContent) > 0 {
+				result = append(result, token{
+					tokenType:    textToken,
+					content:      unescapeEnvVars(currentContent, true),
+					fatalContent: currentContent,
+				})
 
 				currentContent = ""
-				continue
 			}
+
+			idx += len(envVarPrefix)
+			isEnvVar = true
+			continue
 		}
 
-		if currentTokenType == envVarToken && isStartOfToken("}", prev, rest) {
+		if isEnvVar && isStartOfToken("}", prev, rest) {
 			unescapedContent := strings.ReplaceAll(currentContent, "`}", "}")
 
 			if strings.HasSuffix(unescapedContent, "\\`") {
@@ -132,14 +109,75 @@ func Tokenize(input string, allowedToken tokenType) ([]token, string) {
 				fatalContent: envVarPrefix + currentContent + "}",
 			})
 
-			currentTokenType = textToken
+			isEnvVar = false
 			currentContent = ""
 
 			idx += 1
 			continue
 		}
 
-		if currentTokenType == executableToken {
+		currentContent += string(inputRunes[idx : idx+1])
+		idx += 1
+	}
+
+	if isEnvVar {
+		return nil, fmt.Sprintf("Missing closing bracket for environment variable: %s%s", envVarPrefix, currentContent)
+	}
+
+	if len(currentContent) > 0 {
+		result = append(result, token{
+			tokenType:    textToken,
+			content:      unescapeEnvVars(currentContent, false),
+			fatalContent: currentContent,
+		})
+	}
+
+	return result, ""
+}
+
+func unescapeExecutables(content string, hasNextToken bool) string {
+	content = strings.ReplaceAll(content, "`"+executablePrefix, executablePrefix)
+
+	if hasNextToken && strings.HasSuffix(content, "\\`") {
+		content = strings.TrimSuffix(content, "\\`") + "`"
+	}
+
+	return content
+}
+
+func tokenizeExecutables(input string) ([]token, string) {
+	result := []token{}
+	inputRunes := []rune(input)
+
+	var executableQuoteRune rune
+	var executableQuoteEnd int
+	executableStartIdx := -1
+
+	currentContent := ""
+	idx := 0
+
+	for idx < len(inputRunes) {
+		rest := string(inputRunes[idx:])
+		prev := string(inputRunes[:idx])
+
+		if executableStartIdx == -1 && isStartOfToken(executablePrefix, prev, rest) {
+			if len(currentContent) > 0 {
+				result = append(result, token{
+					tokenType:    textToken,
+					content:      unescapeExecutables(currentContent, true),
+					fatalContent: currentContent,
+				})
+
+				currentContent = ""
+			}
+
+			executableStartIdx = idx
+
+			idx += len(envVarPrefix)
+			continue
+		}
+
+		if executableStartIdx >= 0 {
 			nextRune := []rune(rest)[0]
 			switch nextRune {
 			case '"', '\'':
@@ -169,7 +207,7 @@ func Tokenize(input string, allowedToken tokenType) ([]token, string) {
 					fatalContent: string(inputRunes[executableStartIdx : idx+1]),
 				})
 
-				currentTokenType = textToken
+				executableStartIdx = -1
 				currentContent = ""
 
 				idx += 1
@@ -181,34 +219,19 @@ func Tokenize(input string, allowedToken tokenType) ([]token, string) {
 		idx += 1
 	}
 
-	if currentTokenType == envVarToken {
-		result = append(result, token{
-			tokenType:    errorToken,
-			fatalContent: envVarPrefix + currentContent,
-		})
-
-		return result, fmt.Sprintf("Missing closing bracket for environment variable: %s%s", envVarPrefix, currentContent)
-	}
-
-	if currentTokenType == executableToken {
-		result = append(result, token{
-			tokenType:    errorToken,
-			fatalContent: executablePrefix + currentContent,
-		})
-
+	if executableStartIdx >= 0 {
 		if executableQuoteRune != 0 {
-			return result, fmt.Sprintf("Unterminated quote sequence for executable: %s", string(inputRunes[executableStartIdx:]))
+			return nil, fmt.Sprintf("Unterminated quote sequence for executable: %s", string(inputRunes[executableStartIdx:]))
 		}
-
-		return result, fmt.Sprintf("Missing closing parenthesis for executable: %s", string(inputRunes[executableStartIdx:]))
+		return nil, fmt.Sprintf("Missing closing parenthesis for executable: %s", string(inputRunes[executableStartIdx:]))
 	}
 
-	if len(currentContent) > 0 && currentTokenType == textToken {
-		return append(result, token{
+	if len(currentContent) > 0 {
+		result = append(result, token{
 			tokenType:    textToken,
-			content:      unescapeTextContent(currentContent, allowedToken, false),
+			content:      unescapeExecutables(currentContent, false),
 			fatalContent: currentContent,
-		}), ""
+		})
 	}
 
 	return result, ""

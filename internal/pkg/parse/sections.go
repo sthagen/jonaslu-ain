@@ -1,6 +1,8 @@
 package parse
 
 import (
+	"fmt"
+	"os"
 	"strings"
 )
 
@@ -10,36 +12,25 @@ type sourceMarker struct {
 }
 
 type expandedSourceMarker struct {
-	tokens          []token
+	content         string
+	fatalContent    string
+	comment         string
 	sourceLineIndex int
 	expanded        bool
 }
 
 func (e expandedSourceMarker) String() string {
-	if len(e.tokens) == 0 {
-		return ""
-	}
-
-	result := ""
-	for _, content := range e.tokens {
-		result += content.fatalContent
-	}
-
-	return result
+	return e.fatalContent + e.comment
 }
 
 func (e expandedSourceMarker) getTextContent() string {
-	result := ""
+	textContent := strings.ReplaceAll(e.content, "`"+commentPrefix, commentPrefix)
 
-	for _, token := range e.tokens {
-		if token.tokenType == commentToken {
-			break
-		}
-
-		result += token.content
+	if e.comment != "" && strings.HasSuffix(textContent, "\\`") {
+		textContent = strings.TrimSuffix(textContent, "\\`") + "`"
 	}
 
-	return result
+	return textContent
 }
 
 const (
@@ -100,94 +91,124 @@ func (s *sectionedTemplate) getNamedSection(sectionHeader string) *[]sourceMarke
 	return &[]sourceMarker{}
 }
 
-type aggregatedFatal struct {
-	fatal                     string
-	expandedTemplateLineIndex int
-}
-
-func (s *sectionedTemplate) iterate(iterationType tokenType, iterator func(token) (string, string)) {
+func (s *sectionedTemplate) expandTemplateLines(
+	tokenize func(string) ([]token, string),
+	iterator func(t token) (string, string),
+) {
 	newExpandedTemplateLines := []expandedSourceMarker{}
-	aggregatedFatals := []aggregatedFatal{}
 
-	for expandedTemplateLineIdx, expandedTemplateLine := range s.expandedTemplateLines {
-		newExpandedTemplateIdx := len(newExpandedTemplateLines)
-		newExpandedTemplateLine := expandedSourceMarker{expanded: false, sourceLineIndex: expandedTemplateLine.sourceLineIndex}
+	for _, expandedTemplateLine := range s.expandedTemplateLines {
+		tokens, fatal := tokenize(expandedTemplateLine.content)
 
-		for _, token := range expandedTemplateLine.tokens {
-			if token.tokenType != iterationType {
-				newExpandedTemplateLine.tokens = append(newExpandedTemplateLine.tokens, token)
+		if fatal != "" {
+			s.setFatalMessage(fatal, expandedTemplateLine.sourceLineIndex)
+			continue
+		}
+
+		fatalTokens, fatal := tokenize(expandedTemplateLine.fatalContent)
+		if fatal != "" {
+			fmt.Fprintf(os.Stderr, "Internal error tokenizing fatals: %s\n", fatal)
+			os.Exit(1)
+		}
+
+		content := ""
+		fatalContent := ""
+
+		comment := ""
+		expanded := false
+
+		for tokenIdx, token := range tokens {
+			if token.tokenType == textToken {
+				// Remove the escaping of `${ - because now it's ok to return
+				// `${ and it'll be verbatim this from now on. So if a script
+				// (or an env-var) contains that sequence it should not be erased
+				// anymore.
+				content += token.content
+				fatalContent += fatalTokens[tokenIdx].fatalContent
+
 				continue
 			}
 
-			newContentStr, fatal := iterator(token)
+			value, fatal := iterator(token)
+
 			if fatal != "" {
-				// We'll use the old content, since the new wasn't valid
-				s.setFatalMessage(fatal, expandedTemplateLineIdx)
+				s.setFatalMessage(fatal, expandedTemplateLine.sourceLineIndex)
 				continue
 			}
 
-			newExpandedTemplateLine.expanded = true
+			if s.hasFatalMessages() {
+				// If there are errors the stuff below is busywork
+				// Since we won't set any new expanded template lines
+				// if there are fatals
+				continue
+			}
 
-			newContentStr = strings.ReplaceAll(newContentStr, "\r\n", "\n")
-			newLines := strings.Split(newContentStr, "\n")
+			expanded = true
 
-			newLineTokens, fatal := Tokenize(newLines[0], iterationType-1)
-			newExpandedTemplateLine.tokens = append(newExpandedTemplateLine.tokens, newLineTokens...)
+			value = strings.ReplaceAll(value, "\r\n", "\n")
+			newLines := strings.Split(value, "\n")
 
-			if fatal != "" {
-				aggregatedFatals = append(aggregatedFatals, aggregatedFatal{
-					fatal:                     fatal,
-					expandedTemplateLineIndex: newExpandedTemplateIdx,
+			valueText, valueComment := splitTextOnComment(newLines[0])
+
+			content += valueText
+			fatalContent += valueText
+			comment = valueComment
+
+			for _, newLine := range newLines[1:] {
+				newExpandedTemplateLines = append(newExpandedTemplateLines, expandedSourceMarker{
+					content:         content,
+					fatalContent:    fatalContent,
+					comment:         valueComment,
+					sourceLineIndex: expandedTemplateLine.sourceLineIndex,
+					expanded:        true,
 				})
+
+				valueText, valueComment := splitTextOnComment(newLine)
+
+				content = valueText
+				fatalContent = valueText
+				comment = valueComment
 			}
 
-			for newLineIndex, newLine := range newLines[1:] {
-				newLineTokens, fatal := Tokenize(newLine, iterationType-1)
-				newExpandedTemplateLines = append(newExpandedTemplateLines, newExpandedTemplateLine)
-
-				newExpandedTemplateLine = expandedSourceMarker{expanded: true, sourceLineIndex: expandedTemplateLine.sourceLineIndex}
-				newExpandedTemplateLine.tokens = append(newExpandedTemplateLine.tokens, newLineTokens...)
-
-				if fatal != "" {
-					aggregatedFatals = append(aggregatedFatals, aggregatedFatal{
-						fatal: fatal,
-						// + 1 because we've added at least one before splitting and adding more lines here
-						expandedTemplateLineIndex: newExpandedTemplateIdx + newLineIndex + 1,
-					})
+			if comment != "" {
+				for _, restToken := range tokens[tokenIdx+1:] {
+					comment += restToken.fatalContent
 				}
+
+				break
 			}
 		}
 
-		newExpandedTemplateLines = append(newExpandedTemplateLines, newExpandedTemplateLine)
+		newExpandedTemplateLines = append(newExpandedTemplateLines, expandedSourceMarker{
+			content:         content,
+			fatalContent:    fatalContent,
+			comment:         comment + expandedTemplateLine.comment,
+			sourceLineIndex: expandedTemplateLine.sourceLineIndex,
+			expanded:        expandedTemplateLine.expanded || expanded,
+		})
 	}
 
-	s.expandedTemplateLines = newExpandedTemplateLines
-
-	for _, aggregatedFatal := range aggregatedFatals {
-		s.setFatalMessage(aggregatedFatal.fatal, aggregatedFatal.expandedTemplateLineIndex)
+	if !s.hasFatalMessages() {
+		s.expandedTemplateLines = newExpandedTemplateLines
 	}
 }
 
 func newSectionedTemplate(rawTemplateString, filename string) *sectionedTemplate {
 	rawTemplateLines := strings.Split(strings.ReplaceAll(rawTemplateString, "\r\n", "\n"), "\n")
+
 	expandedTemplateLines := []expandedSourceMarker{}
-	aggregatedFatals := []aggregatedFatal{}
 
 	for sourceIndex, rawTemplateLine := range rawTemplateLines {
-		tokens, fatal := Tokenize(rawTemplateLine, envVarToken)
+		content, comment := splitTextOnComment(rawTemplateLine)
 
 		expandedTemplateLines = append(expandedTemplateLines, expandedSourceMarker{
-			tokens:          tokens,
+			content:      content,
+			fatalContent: content,
+			comment:      comment,
+
 			sourceLineIndex: sourceIndex,
 			expanded:        false,
 		})
-
-		if fatal != "" {
-			aggregatedFatals = append(aggregatedFatals, aggregatedFatal{
-				fatal:                     fatal,
-				expandedTemplateLineIndex: sourceIndex,
-			})
-		}
 	}
 
 	sectionedTemplate := sectionedTemplate{
@@ -195,10 +216,6 @@ func newSectionedTemplate(rawTemplateString, filename string) *sectionedTemplate
 		expandedTemplateLines: expandedTemplateLines,
 		rawTemplateLines:      rawTemplateLines,
 		filename:              filename,
-	}
-
-	for _, aggregatedFatal := range aggregatedFatals {
-		sectionedTemplate.setFatalMessage(aggregatedFatal.fatal, aggregatedFatal.expandedTemplateLineIndex)
 	}
 
 	return &sectionedTemplate
