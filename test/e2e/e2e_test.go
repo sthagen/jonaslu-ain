@@ -81,10 +81,12 @@ func runTest(filename string, templateContents []byte) error {
 
 	testDirectives := testDirectives{}
 	err := yaml.Unmarshal([]byte(strings.Join(directives, "\n")), &testDirectives)
-
 	if err != nil {
 		return errors.New("Could not unmarshal yaml")
 	}
+
+	testDirectives.Stdout = strings.ReplaceAll(testDirectives.Stdout, "$filename", filename)
+	testDirectives.Stderr = strings.ReplaceAll(testDirectives.Stderr, "$filename", filename)
 
 	var stdout, stderr bytes.Buffer
 
@@ -139,8 +141,7 @@ func runTest(filename string, templateContents []byte) error {
 	return nil
 }
 
-func readTestFiles() (map[string][]byte, error) {
-	templateFolder := "templates"
+func readTestFiles(templateFolder string) (map[string][]byte, error) {
 	files, err := os.ReadDir(templateFolder)
 
 	if err != nil {
@@ -151,6 +152,18 @@ func readTestFiles() (map[string][]byte, error) {
 
 	for _, file := range files {
 		if file.IsDir() {
+			subFolderPath := templateFolder + "/" + file.Name()
+			subFolderDirs, err := readTestFiles(subFolderPath)
+
+			if err != nil {
+				return nil, errors.Join(errors.New("could not read subfolder"+subFolderPath), err)
+			}
+
+			// Merge the subfolder files with the current files
+			for k, v := range subFolderDirs {
+				testFiles[k] = v
+			}
+
 			continue
 		}
 
@@ -183,7 +196,7 @@ func Test_main(t *testing.T) {
 
 	defer os.Remove(testBinaryPath)
 
-	files, err := readTestFiles()
+	files, err := readTestFiles("templates")
 	if err != nil {
 		t.Fatalf("Could not read test templates")
 		return
