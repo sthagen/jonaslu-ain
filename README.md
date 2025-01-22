@@ -53,6 +53,8 @@ Ain was built to enable scripting of input and further processing of output via 
 - [Troubleshooting](#troubleshooting)
 - [Ain in a bigger context](#ain-in-a-bigger-context)
 - [Contributing](#contributing)
+  - [Commit messages](#commit-messages)
+  - [Testing](#testing)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -530,12 +532,41 @@ But wait! There's more!
 With ain being terminal friendly there are few neat tricks in the [wiki](https://github.com/jonaslu/ain/wiki)
 
 # Contributing
-I'd love if you want to get your hands dirty and improve ain!
+I'd love if you want to get your hands dirty and improve ain! 
 
-If you look closely there are almost* no tests. There's even a [commit](9e114a3) wiping all tests that once was. Why is a good question. WTF is also a valid response.
+Besides [go](https://go.dev/), ain comes with a [Taskfile](https://taskfile.dev/). Install it and run `task` in the root-folder for tasks relating to build, running and testing ain. 
 
-It's an experiment you see, I've blogged about [atomic literate commits](https://www.iamjonas.me/2021/01/literate-atomic-commits.html) paired with a thing called a [test plan](https://www.iamjonas.me/2021/04/the-test-plan.html). This means you make the commit solve one problem, write in plain english what problem is and how the commit solves it and how you verified that it works. All of that in the commit messages. For TL;DR; do a `git log` and see for yourself.
+## Commit messages
+Commit messages should describe why the change is needed, how the patch solves it and any other background information. Small focused commits are preferable to big blobs. All commits should include a [test plan](https://www.iamjonas.me/2021/04/the-test-plan.html) last in the message.
 
-I'll ask you to do the same and we'll experiment together. See it as a opportunity to try on something new.
+Background here: [atomic literate commits](https://www.iamjonas.me/2021/01/literate-atomic-commits.html)
 
-\* Except for where it does make sense to have a unit-test: to exercise a well known algo and prove it's correct as done in utils_test.go. Doing this by hand would be hard, timeconsuming and error prone.
+## Testing
+Any PR modifying code should include verification of changes using tests.
+
+### End to end tests
+Ain comes with a battery of end-to-end tests which is the preferable way to verify. The tests reside in the folder or sub-folder of `test/e2e/templates`. The main end-to-end task runner is the `test/e2e/e2e_test.go`file. An end-to-end test case is a plain runnable .ain file. By convention ok-{test-name}.ain is used for successful tests and nok-{test-name}.ain for testing failures.
+
+Yaml is added as comments last in the file, with at lest one empty row between the last section and the yaml, and used by the test runner to validate the output.
+
+Currently supported yaml parameters are:
+```
+env:       <- (array) environment variables to set before the test
+args:      <- (array) arguments to pass to the test binary
+afterargs: <- (array) arguments passed after the test file name (currently --vars)
+stderr:    <- (string) compared with the stdout output of the test
+stdout:    <- (string) compared with the stderr output of the test
+exitcode:  <- (int) compared with the test binary exit code. Defaults to 0
+```
+
+Feel free to add more comments with explanation on the verification.
+
+When adding a test case check the coverage (`task test:cover`) and verify your patch has been touched by tests.
+
+### Unit tests
+If the patch involves just one or a few methods and it's far easier to test it in isolation then add a unit-test in the same folder as the method under test.
+
+### Test plan
+The third option is documenting any manual testing. Last in the commit message add a [test plan](https://www.iamjonas.me/2021/04/the-test-plan.html) with one bullet point for each test-case add: setup, execution and verification. Usage of coverage is encouraged so every part of the patch is properly tested.
+
+For a TL;DR; do a `git log` and see the commit history.
